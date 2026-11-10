@@ -1,7 +1,6 @@
 // No build step: Orca strips the types and compiles the JSX when the panel loads.
 import {
   atom,
-  Badge,
   Button,
   EmptyState,
   host,
@@ -29,6 +28,7 @@ import {
   parseTasks,
   removeTask,
   repoOptions,
+  setRepo,
   setStatus,
   STATUSES,
   type Status,
@@ -74,7 +74,19 @@ function submit(text: string): void {
   set(draft, '')
 }
 
-function Rows({ list }: { list: Task[] }) {
+// Select takes no free text, so with no known repo a typed Input stands in.
+// select = Orca knows repos: typing a repo adds it to the options, which must not swap the Input for a Select mid-typing.
+// Called as a function, not a tag, so the key lands on the Select/Input itself.
+function repoField(id: string | undefined, value: string, options: string[], onChange: (v: string) => void, select: boolean) {
+  return select ? (
+    <Select key={id} label="repo" labelHidden placeholder="repo" value={value} options={options.map((r) => ({ value: r, label: r }))} onChange={onChange} />
+  ) : (
+    // A row (id set) commits on Enter only: a write per keystroke to the persisted atom lost keystrokes to its async echo.
+    <Input key={id} label="repo" labelHidden placeholder={id ? "repo + Enter" : "repo"} {...(id ? { defaultValue: value, onSubmit: onChange } : { value, onChange })} />
+  )
+}
+
+function Rows({ list, options, select }: { list: Task[]; options: string[]; select: boolean }) {
   if (list.length === 0) return <EmptyState title="ยังไม่มีงาน" description="พิมพ์งานด้านบนแล้วกด Enter" icon="check" />
   return (
     <List label="งาน">
@@ -82,7 +94,7 @@ function Rows({ list }: { list: Task[] }) {
         <ListItem key={t.id}>
           <Text>{t.text}</Text>
           <Row gap="sm" align="center" justify="between">
-            {t.repo ? <Badge>{t.repo}</Badge> : null}
+            {repoField(`repo-${t.id}`, t.repo, options, (v) => edit((l) => setRepo(l, t.id, v)), select)}
             <Select
               key={`status-${t.id}`}
               label="สถานะ"
@@ -110,21 +122,16 @@ export default function Panel() {
       <Stack gap="xs">
         <Input label="งานใหม่" labelHidden placeholder="งานใหม่" value={read(draft)} onChange={(v) => set(draft, v)} onSubmit={submit} />
         <Row gap="xs" align="center">
-          {options.length > 0 ? (
-            // Select takes no free text, so a typed repo needs the Input below.
-            <Select label="repo" labelHidden placeholder="repo" value={chosen} options={options.map((r) => ({ value: r, label: r }))} onChange={(v) => set(draftRepo, v)} />
-          ) : (
-            <Input label="repo" labelHidden placeholder="repo" value={chosen} onChange={(v) => set(draftRepo, v)} />
-          )}
+          {repoField(undefined, chosen, options, (v) => set(draftRepo, v), repos.length > 0)}
           <Button onPress={() => submit(read(draft))}>เพิ่ม</Button>
         </Row>
       </Stack>
       <Tabs label="มุมมอง" value={read(tab)} onChange={(v) => set(tab, v)}>
         <Tab value="all" label="ทั้งหมด">
-          <Rows list={list} />
+          <Rows list={list} options={options} select={repos.length > 0} />
         </Tab>
         <Tab value="worktree" label="worktree นี้">
-          <Rows list={forWorktree(list, wt ?? NONE)} />
+          <Rows list={forWorktree(list, wt ?? NONE)} options={options} select={repos.length > 0} />
         </Tab>
       </Tabs>
       <Button variant="ghost" onPress={() => edit(clearCompleted)}>

@@ -134,3 +134,22 @@ test('with no known repo the repo is typed in an Input', async () => {
   done(view)
   await view.unmount()
 })
+
+test("changing a row's repo updates that task and leaves the new-task default alone", async () => {
+  const view = await mount(panel, { host: host([task('1', 'a', 'todo'), task('2', 'b', 'todo')]) })
+  await view.select({ testId: 'repo-2' }, 'zed')
+  assert.deepEqual(stored(view).map((t) => t.repo), ['proj', 'zed'])
+  await view.type({ type: 'Input', label: 'งานใหม่' }, 'c', { submit: true })
+  assert.equal(stored(view)[2].repo, 'proj')
+  done(view)
+  await view.unmount()
+})
+
+test("with no known repo a row's repo is typed in an Input", async () => {
+  const h = mockHost({ storage: { tasks: [task('1', 'a', 'todo', wt, '')] }, results: { 'workspace.readContext': null }, requests: { repoContext: { repo: '', repos: [] } } })
+  const view = await mount(panel, { host: h })
+  await view.type({ testId: 'repo-1' }, 'mine', { submit: true })
+  assert.equal(stored(view)[0].repo, 'mine')
+  done(view)
+  await view.unmount()
+})
