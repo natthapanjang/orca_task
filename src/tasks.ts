@@ -6,17 +6,23 @@ export type Task = { id: string; text: string; status: Status; repo: string; wor
 
 const isStr = (v: unknown): v is string => typeof v === 'string'
 
-// Field-by-field validation; items failing any field are dropped.
+// Only id, text and status are required; bad repo/worktree/at fall back to defaults so hand-edited items survive.
 export function parseTasks(raw: unknown): Task[] {
   if (!Array.isArray(raw)) return []
   const out: Task[] = []
   for (const it of raw) {
     if (typeof it !== 'object' || it === null) continue
     const { id, text, status, repo, worktree: wt, at } = it as Record<string, any>
-    if (!isStr(id) || !isStr(text) || !text.trim() || !STATUSES.includes(status) || !isStr(repo)) continue
-    if (typeof wt !== 'object' || wt === null || !isStr(wt.displayName) || !isStr(wt.branch)) continue
-    if (typeof at !== 'number' || !Number.isFinite(at)) continue
-    out.push({ id, text, status, repo, worktree: { displayName: wt.displayName, branch: wt.branch }, at })
+    if (!isStr(id) || !isStr(text) || !text.trim() || !STATUSES.includes(status)) continue
+    const w = typeof wt === 'object' && wt !== null ? wt : {}
+    out.push({
+      id,
+      text,
+      status,
+      repo: isStr(repo) ? repo : '',
+      worktree: { displayName: isStr(w.displayName) ? w.displayName : '', branch: isStr(w.branch) ? w.branch : '' },
+      at: typeof at === 'number' && Number.isFinite(at) ? at : 0,
+    })
   }
   return out
 }

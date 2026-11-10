@@ -153,3 +153,48 @@ test("with no known repo a row's repo is typed in an Input", async () => {
   done(view)
   await view.unmount()
 })
+
+const answers = (input: { displayName: string }) =>
+  input.displayName === 'other' ? { repo: 'otherrepo', repos: ['otherrepo', 'proj', 'zed'] } : { repo: 'proj', repos: ['proj', 'zed'] }
+
+test("a picked repo is dropped when the focused worktree changes: new tasks get the new worktree's repo", async () => {
+  const h = mockHost({ results: { 'workspace.readContext': { ...wt, terminals: [] } }, requests: { repoContext: answers } })
+  const view = await mount(panel, { host: h })
+  await view.select({ type: 'Select', label: 'repo' }, 'zed')
+  await view.emit('workspace.changed', { context: { ...other, terminals: [] } })
+  await view.type({ type: 'Input', label: 'งานใหม่' }, 'x', { submit: true })
+  assert.equal(stored(view)[0].repo, 'otherrepo')
+  assert.deepEqual(stored(view)[0].worktree, other)
+  done(view)
+  await view.unmount()
+})
+
+test('workspace.changed for the same worktree (terminals only) keeps the picked repo', async () => {
+  const view = await mount(panel, { host: host() })
+  await view.select({ type: 'Select', label: 'repo' }, 'zed')
+  await view.emit('workspace.changed', { context: { ...wt, terminals: [{ id: 't1', title: 'sh' }] } })
+  await view.type({ type: 'Input', label: 'งานใหม่' }, 'x', { submit: true })
+  assert.equal(stored(view)[0].repo, 'zed')
+  done(view)
+  await view.unmount()
+})
+
+test('an older repoContext answer arriving late does not overwrite the newer one', async () => {
+  const third = { displayName: 'third', branch: 'x' }
+  const h = mockHost({
+    results: { 'workspace.readContext': { ...wt, terminals: [] } },
+    // 'other' is asked first but answers last
+    requests: {
+      repoContext: (input: { displayName: string }) =>
+        input.displayName === 'other' ? (new Promise((r) => setTimeout(() => r({ repo: 'stale', repos: ['stale'] }), 50)) as any) : input.displayName === 'third' ? { repo: 'thirdrepo', repos: ['thirdrepo'] } : answers(input)
+    }
+  })
+  const view = await mount(panel, { host: h })
+  await Promise.all([view.emit('workspace.changed', { context: { ...other, terminals: [] } }), view.emit('workspace.changed', { context: { ...third, terminals: [] } })])
+  await new Promise((r) => setTimeout(r, 150))
+  await view.settled()
+  await view.type({ type: 'Input', label: 'งานใหม่' }, 'x', { submit: true })
+  assert.equal(stored(view)[0].repo, 'thirdrepo')
+  done(view)
+  await view.unmount()
+})

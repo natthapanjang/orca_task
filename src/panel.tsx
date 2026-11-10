@@ -48,13 +48,18 @@ const tab = atom('all')
 const NONE: Worktree = { displayName: '', branch: '' }
 const pick = (c: Worktree | null): Worktree | null => (c ? { displayName: c.displayName, branch: c.branch } : null)
 
+const same = (a: Worktree | null, b: Worktree | null) => a?.displayName === b?.displayName && a?.branch === b?.branch
+
 function refresh(context: Worktree | null): void {
   const wt = pick(context)
+  // workspace.changed also fires for terminal changes: only a different worktree drops the user's repo pick.
+  if (!same(read(focused), wt)) set(draftRepo, null)
   set(focused, wt)
   // Never rejects into the panel: a failed request keeps what it had.
   plugin
     .request('repoContext', wt ?? NONE)
-    .then((answer) => set(repoInfo, { repo: wt ? answer.repo : '', repos: answer.repos }))
+    // Answers can arrive out of order: only the one for the still-focused worktree counts.
+    .then((answer) => same(read(focused), wt) && set(repoInfo, { repo: wt ? answer.repo : '', repos: answer.repos }))
     .catch(() => {})
 }
 

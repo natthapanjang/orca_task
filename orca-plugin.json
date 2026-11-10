@@ -3,7 +3,7 @@
   "id": "task-notes",
   "name": "Task notes",
   "version": "0.1.0",
-  "description": "A sidebar panel and the worker that answers it.",
+  "description": "Jot tasks by hand with a status and a repo; stored in a plain JSON file.",
   "engines": {
     "orca": ">=1.4.246"
   },

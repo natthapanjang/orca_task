@@ -1,6 +1,12 @@
 # Task notes
 
-A right-sidebar panel (`src/panel.tsx`) and the plugin's own worker (`src/worker.ts`). The panel asks with `plugin.request`, the worker answers with `orca.panels.handle`, keeps the total in `orca.storage` and tells every open panel with `orca.panels.post`; `src/protocol.ts` types both sides. Orca transpiles both files when they load, so there is no build step: save and the panel or worker reloads (a worker reload drops its in-memory state, so keep what must last in storage). `orca plugin test .` runs `src/panel.test.tsx` and `src/worker.test.ts` in Node with `orca/testing`, and `orca plugin check .` renders the panel with the worker in each `src/panel.check.ts` scenario; `npx tsc -p .` type-checks against the typings `orca plugin types .` writes to `.orca/types/`. With the folder loaded, `orca plugin dev request . counter.add --data '{"by":1}'` calls the worker as the panel does.
+A right-sidebar panel for jotting tasks by hand: each task has a status (`todo`, `in-progress`, `in-review`, `completed`) and a repo that defaults to the focused worktree's repo. Tasks are stored as one `tasks` array in the plugin's own `storage.json` (`%APPDATA%\orca\plugins-data\<plugin-id>\storage.json`), which an AI agent can read.
+
+- `src/panel.tsx`: the panel. `src/tasks.ts`: pure task logic. `src/repos.ts`: repo name from a workspace path.
+- `src/worker.ts` answers the `repoContext` request (`src/protocol.ts`) using the host method `workspace.list`, which needs the `workspace:read` capability.
+- `orca plugin test .` runs the tests in Node with `orca/testing`; `orca plugin check .` renders the panel in each `src/panel.check.ts` scenario.
+
+Known limit: "worktree นี้" matches tasks on worktree name and branch only, so two repos with a worktree of the same name and branch show each other's tasks.
 
 ## Develop
 

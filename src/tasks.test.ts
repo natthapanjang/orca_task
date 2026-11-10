@@ -83,10 +83,31 @@ test('parseTasks drops items missing id, text or a valid status', () => {
     { ...good, id: undefined },
     { ...good, text: undefined },
     { ...good, status: 'bogus' },
-    { ...good, worktree: null },
-    { ...good, at: 'nan' },
   ])
   assert.deepEqual(out, [good])
+})
+
+test('parseTasks defaults bad repo, at and worktree instead of dropping', () => {
+  const good = mk('ok')
+  const blankWt = { displayName: '', branch: '' }
+  const out = parseTasks([
+    { ...good, id: 'r', repo: 5 },
+    { ...good, id: 'a', at: 'nan' },
+    { ...good, id: 'w', worktree: null },
+    { ...good, id: 'p', worktree: { displayName: 'only' } },
+  ])
+  assert.deepEqual(out, [
+    { ...good, id: 'r', repo: '' },
+    { ...good, id: 'a', at: 0 },
+    { ...good, id: 'w', worktree: blankWt },
+    { ...good, id: 'p', worktree: { displayName: 'only', branch: '' } },
+  ])
+})
+
+test('parseTasks keeps an item missing only repo or only at', () => {
+  const { repo, ...noRepo } = mk('r')
+  const { at, ...noAt } = mk('a')
+  assert.deepEqual(parseTasks([noRepo, noAt]), [{ ...mk('r'), repo: '' }, { ...mk('a'), at: 0 }])
 })
 
 test('repoOptions includes repos found only on tasks', () => {
