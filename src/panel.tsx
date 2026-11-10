@@ -21,12 +21,13 @@ import {
   Tab,
   Tabs,
   Text,
+  Textarea,
   update,
   type PanelContext
 } from 'orca'
 import {
   addTask,
-  clearCompleted,
+  filterTasks,
   forWorktree,
   parseTasks,
   removeTask,
@@ -36,6 +37,7 @@ import {
   STATUSES,
   type Status,
   type Task,
+  validDue,
   type Worktree
 } from './tasks'
 
@@ -48,6 +50,13 @@ const draft = atom('')
 const draftRepo = atom<string | null>(null)
 const tab = atom('all')
 const draftStatus = atom<Status>('todo')
+const draftDesc = atom('')
+const draftDue = atom('')
+/** True after Add with a due date that is not a real YYYY-MM-DD; cleared by typing. */
+const dueError = atom(false)
+/** List filters; 'all' means no filter. */
+const filterStatus = atom<string>('all')
+const filterRepo = atom<string>('all')
 /** True after Add with blank text; cleared by typing. */
 const blankError = atom(false)
 /** The task whose repo is being changed (its Badge is a Select meanwhile). */
@@ -84,12 +93,24 @@ function submit(text: string): void {
   const wt = read(focused) ?? NONE
   const repo = read(draftRepo) ?? read(repoInfo).repo
   const status = read(draftStatus)
-  edit((list) => addTask(list, { text, repo, worktree: wt, status }, Date.now(), () => `${Date.now()}-${Math.random().toString(36).slice(2)}`))
+  const dueDate = read(draftDue).trim()
+  if (!validDue(dueDate)) return void set(dueError, true)
+  const description = read(draftDesc)
+  edit((list) => addTask(list, { title: text, description, dueDate, repo, worktree: wt, status }, Date.now(), () => `${Date.now()}-${Math.random().toString(36).slice(2)}`))
   set(draft, '')
+  set(draftDesc, '')
+  set(draftDue, '')
   set(blankError, false)
+  set(dueError, false)
 }
 
 const statusOptions = STATUSES.map((s) => ({ value: s, label: s }))
+const filterStatusOptions = [{ value: 'all', label: 'ทั้งหมด' }, ...statusOptions]
+// Local calendar day as YYYY-MM-DD; string order equals date order.
+const today = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 // Select takes no free text, so with no known repo a typed Input stands in.
 // select = Orca knows repos: typing a repo adds it to the options, which must not swap the Input for a Select mid-typing.
@@ -112,17 +133,25 @@ function Rows({ list, options, select, empty }: { list: Task[]; options: string[
           <Stack gap="xs">
             <Checkbox
               key={`done-${t.id}`}
-              label={t.text}
+              label={t.title}
               checked={t.status === 'completed'}
               onChange={(on) => edit((l) => setStatus(l, t.id, on ? 'completed' : 'todo'))}
             />
+            {t.description ? (
+              <Text muted size="xs">
+                {t.description}
+              </Text>
+            ) : null}
+            {t.dueDate ? (
+              <Badge tone={t.status !== 'completed' && t.dueDate < today() ? 'warning' : 'neutral'}>{t.dueDate}</Badge>
+            ) : null}
             <Row gap="xs" align="center" justify="between" wrap>
               {read(editing) === t.id ? (
                 repoField(`repo-${t.id}`, t.repo, options, (v) => (edit((l) => setRepo(l, t.id, v)), set(editing, null)), select)
               ) : (
                 <Row gap="xs" align="center">
                   <Badge tone={t.repo ? 'neutral' : 'warning'}>{t.repo || 'ไม่ระบุ repo'}</Badge>
-                  <IconButton key={`edit-${t.id}`} icon="edit" label={`เปลี่ยน repo: ${t.text}`} variant="ghost" size="xs" onPress={() => set(editing, t.id)} />
+                  <IconButton key={`edit-${t.id}`} icon="edit" label={`เปลี่ยน repo: ${t.title}`} variant="ghost" size="xs" onPress={() => set(editing, t.id)} />
                 </Row>
               )}
               <Row gap="xs" align="center">
@@ -134,7 +163,7 @@ function Rows({ list, options, select, empty }: { list: Task[]; options: string[
                   options={statusOptions}
                   onChange={(v) => edit((l) => setStatus(l, t.id, v as Status))}
                 />
-                <IconButton key={`delete-${t.id}`} icon="delete" label={`ลบ: ${t.text}`} tone="danger" variant="ghost" onPress={() => edit((l) => removeTask(l, t.id))} />
+                <IconButton key={`delete-${t.id}`} icon="delete" label={`ลบ: ${t.title}`} tone="danger" variant="ghost" onPress={() => edit((l) => removeTask(l, t.id))} />
               </Row>
             </Row>
           </Stack>
@@ -152,7 +181,11 @@ export default function Panel() {
   const chosen = read(draftRepo) ?? repo
   const select = repos.length > 0
   const mine = forWorktree(list, wt ?? NONE)
-  const visible = read(tab) === 'worktree' ? mine : list
+  const fs = read(filterStatus)
+  const fr = read(filterRepo)
+  const filter = { status: (fs === 'all' ? '' : fs) as Status | '', repo: fr === 'all' ? '' : fr }
+  const visible = filterTasks(read(tab) === 'worktree' ? mine : list, filter)
+  const shown = (l: Task[]) => filterTasks(l, filter)
   const remaining = visible.filter((t) => t.status !== 'completed').length
   const finished = visible.length - remaining
   const clearVisible = () => {
@@ -173,6 +206,20 @@ export default function Panel() {
             onSubmit={submit}
           />
         </Field>
+        <Field label="รายละเอียด">
+          <Textarea label="รายละเอียด" labelHidden rows={2} value={read(draftDesc)} onChange={(v) => set(draftDesc, v)} />
+        </Field>
+        <Field label="วันครบกำหนด" error={read(dueError) ? 'วันที่ต้องเป็น YYYY-MM-DD' : undefined}>
+          <Input
+            label="วันครบกำหนด"
+            labelHidden
+            placeholder="YYYY-MM-DD"
+            value={read(draftDue)}
+            invalid={read(dueError)}
+            onChange={(v) => (set(draftDue, v), set(dueError, false))}
+            onSubmit={() => submit(read(draft))}
+          />
+        </Field>
         <Field label="repo" description={select ? undefined : 'ไม่รู้ repo ของ worktree นี้ — พิมพ์เอง'}>
           {repoField(undefined, chosen, options, (v) => set(draftRepo, v), select)}
         </Field>
@@ -183,12 +230,23 @@ export default function Panel() {
           เพิ่ม
         </Button>
       </Stack>
+      <Row gap="xs" align="center" wrap>
+        <Select key="filter-status" label="กรองสถานะ" labelHidden value={fs} options={filterStatusOptions} onChange={(v) => set(filterStatus, v)} />
+        <Select
+          key="filter-repo"
+          label="กรองตามที่เก็บ"
+          labelHidden
+          value={fr}
+          options={[{ value: 'all', label: 'ทุก repo' }, ...options.map((r) => ({ value: r, label: r }))]}
+          onChange={(v) => set(filterRepo, v)}
+        />
+      </Row>
       <Tabs label="มุมมอง" value={read(tab)} onChange={(v) => set(tab, v)}>
         <Tab value="all" label="ทั้งหมด">
-          <Rows list={list} options={options} select={select} empty="พิมพ์งานด้านบนแล้วกด Enter" />
+          <Rows list={shown(list)} options={options} select={select} empty="พิมพ์งานด้านบนแล้วกด Enter" />
         </Tab>
         <Tab value="worktree" label="worktree นี้">
-          <Rows list={mine} options={options} select={select} empty="worktree นี้ยังไม่มีงาน — สลับไป “ทั้งหมด” ดูของ worktree อื่น" />
+          <Rows list={shown(mine)} options={options} select={select} empty="worktree นี้ยังไม่มีงาน — สลับไป “ทั้งหมด” ดูของ worktree อื่น" />
         </Tab>
       </Tabs>
       <Row gap="sm" align="center" justify="between" wrap>

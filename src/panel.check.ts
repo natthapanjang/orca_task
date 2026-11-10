@@ -2,7 +2,7 @@
 import { defineCheck } from 'orca/testing'
 
 const wt = { displayName: 'wt', branch: 'main' }
-const task = (id: string, text: string, status: string) => ({ id, text, status, repo: 'proj', worktree: wt, at: 1 })
+const task = (id: string, text: string, status: string) => ({ id, title: text, description: id === '1' ? 'details' : '', dueDate: id === '2' ? '2026-12-01' : '', status, repo: 'proj', worktree: wt, at: 1 })
 
 export default defineCheck({
   fresh: {},

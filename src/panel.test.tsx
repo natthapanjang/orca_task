@@ -3,7 +3,7 @@ import * as panel from './panel'
 
 const wt = { displayName: 'wt', branch: 'main' }
 const other = { displayName: 'other', branch: 'dev' }
-const task = (id: string, text: string, status: string, worktree = wt, repo = 'proj') => ({ id, text, status, repo, worktree, at: 1 })
+const task = (id: string, text: string, status: string, worktree = wt, repo = 'proj') => ({ id, title: text, description: '', dueDate: '', status, repo, worktree, at: 1 })
 
 function host(tasks?: unknown, extra: Record<string, unknown> = {}) {
   return mockHost({
@@ -33,7 +33,7 @@ test('adding a task with the Add button appends a todo row with the repo from re
   await view.press({ text: 'เพิ่ม' })
   const [t] = stored(view)
   assert.equal(stored(view).length, 1)
-  assert.equal(t.text, 'write docs')
+  assert.equal(t.title, 'write docs')
   assert.equal(t.status, 'todo')
   assert.equal(t.repo, 'proj')
   assert.deepEqual(t.worktree, wt)
@@ -50,7 +50,7 @@ test('Enter in the input adds the task, blank text is ignored', async () => {
   await view.type({ type: 'Input', label: 'งานใหม่' }, '   ', { submit: true })
   assert.equal(stored(view), undefined)
   await view.type({ type: 'Input', label: 'งานใหม่' }, 'by enter', { submit: true })
-  assert.equal(stored(view)[0].text, 'by enter')
+  assert.equal(stored(view)[0].title, 'by enter')
   done(view)
   await view.unmount()
 })
@@ -241,6 +241,60 @@ test('the footer counts unfinished tasks of the visible tab and clearing only to
   await view.select({ type: 'Tabs' }, 'worktree')
   await view.press({ text: 'ล้างที่เสร็จแล้ว' })
   assert.deepEqual(stored(view).map((t) => t.id), ['1', '3'])
+  done(view)
+  await view.unmount()
+})
+
+test('description and a valid due date are stored and shown on the row', async () => {
+  const view = await mount(panel, { host: host() })
+  await view.type({ type: 'Input', label: 'งานใหม่' }, 'ship it')
+  await view.type({ type: 'Textarea', label: 'รายละเอียด' }, 'before the demo')
+  await view.type({ type: 'Input', label: 'วันครบกำหนด' }, '2999-12-31')
+  await view.press({ text: 'เพิ่ม' })
+  const [t] = stored(view)
+  assert.equal(t.description, 'before the demo')
+  assert.equal(t.dueDate, '2999-12-31')
+  assert.ok(view.find({ text: 'before the demo' }))
+  assert.ok(view.find({ text: '2999-12-31' }))
+  done(view)
+  await view.unmount()
+})
+
+test('an invalid due date blocks Add, shows an error, and typing clears it', async () => {
+  const view = await mount(panel, { host: host() })
+  await view.type({ type: 'Input', label: 'งานใหม่' }, 'x')
+  await view.type({ type: 'Input', label: 'วันครบกำหนด' }, '2026-02-30')
+  await view.press({ text: 'เพิ่ม' })
+  assert.equal(stored(view), undefined)
+  const shown = () => JSON.stringify(view.tree()).includes('วันที่ต้องเป็น YYYY-MM-DD')
+  assert.equal(shown(), true)
+  await view.type({ type: 'Input', label: 'วันครบกำหนด' }, '2026-02-28')
+  assert.equal(shown(), false)
+  done(view)
+  await view.unmount()
+})
+
+test('legacy stored items with text show as titles', async () => {
+  const legacy = { id: '1', text: 'old one', status: 'todo', repo: 'proj', worktree: wt, at: 1 }
+  const view = await mount(panel, { host: host([legacy]) })
+  assert.ok(view.find({ type: 'Checkbox', label: 'old one' }))
+  done(view)
+  await view.unmount()
+})
+
+test('status and repo filters narrow the list together with the tab', async () => {
+  const list = [task('1', 'a', 'todo', wt, 'proj'), task('2', 'b', 'completed', wt, 'proj'), task('3', 'c', 'todo', wt, 'zed'), task('4', 'd', 'todo', other, 'zed')]
+  const view = await mount(panel, { host: host(list) })
+  const has = (l: string) => view.find({ type: 'Checkbox', label: l }) !== null
+  await view.select({ testId: 'filter-status' }, 'todo')
+  assert.deepEqual(['a', 'b', 'c', 'd'].filter(has), ['a', 'c', 'd'])
+  await view.select({ testId: 'filter-repo' }, 'zed')
+  assert.deepEqual(['a', 'b', 'c', 'd'].filter(has), ['c', 'd'])
+  await view.select({ type: 'Tabs' }, 'worktree')
+  assert.deepEqual(['a', 'b', 'c', 'd'].filter(has), ['c'])
+  await view.select({ testId: 'filter-status' }, 'all')
+  await view.select({ testId: 'filter-repo' }, 'all')
+  assert.deepEqual(['a', 'b', 'c', 'd'].filter(has), ['a', 'b', 'c'])
   done(view)
   await view.unmount()
 })
