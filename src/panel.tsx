@@ -104,11 +104,13 @@ const edit = (f: (list: Task[]) => Task[]) => update(tasks, (stored) => f(parseT
 function submit(text: string): void {
   if (!text.trim()) return void set(blankError, true)
   const wt = read(focused) ?? NONE
-  const repo = read(draftRepo) ?? read(repoInfo).repo
-  const status = read(draftStatus)
-  const dueDate = read(draftDue).trim()
-  if (!validDue(dueDate)) return void (set(dueError, true), set(more, true))
-  const description = read(draftDesc)
+  // Collapsed means quick add: hidden leftovers in the extra fields must not leak into the task.
+  const open = read(more)
+  const repo = (open && read(draftRepo)) || read(repoInfo).repo
+  const status = open ? read(draftStatus) : 'todo'
+  const dueDate = open ? read(draftDue).trim() : ''
+  if (!validDue(dueDate)) return void set(dueError, true)
+  const description = open ? read(draftDesc) : ''
   edit((list) => addTask(list, { title: text, description, dueDate, repo, worktree: wt, status }, Date.now(), () => `${Date.now()}-${Math.random().toString(36).slice(2)}`))
   set(draft, '')
   set(draftDesc, '')

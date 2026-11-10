@@ -439,16 +439,14 @@ test('quick add with only a title stores empty description and due, status todo,
   await view.unmount()
 })
 
-test('an invalid due date on Add opens the closed extra fields and shows the error beside them', async () => {
+test('a due date typed into the extra fields and then collapsed is ignored by quick add, even an invalid one', async () => {
   const view = await mount(panel, { host: host() })
   await view.press({ testId: 'more-toggle' })
   await view.type({ type: 'Input', label: 'วันครบกำหนด' }, '2026-02-30')
   await view.press({ testId: 'more-toggle' })
-  assert.equal(view.find({ type: 'Input', label: 'วันครบกำหนด' }), null)
   await view.type({ type: 'Input', label: 'งานใหม่' }, 'x', { submit: true })
-  assert.equal(stored(view), undefined)
-  assert.ok(view.find({ type: 'Input', label: 'วันครบกำหนด' }))
-  assert.equal(JSON.stringify(view.tree()).includes('วันที่ต้องเป็น YYYY-MM-DD'), true)
+  assert.equal(stored(view)[0].dueDate, '')
+  assert.equal(JSON.stringify(view.tree()).includes('วันที่ต้องเป็น YYYY-MM-DD'), false)
   done(view)
   await view.unmount()
 })
@@ -485,6 +483,21 @@ test('rows are ordered by due date, unfinished first', async () => {
   const tree = JSON.stringify(view.tree())
   const at = (l: string) => tree.indexOf(`"${l}"`)
   assert.equal(at('earlier') < at('later') && at('later') < at('fin'), true)
+  done(view)
+  await view.unmount()
+})
+
+test('extra fields typed and then collapsed are not applied to a quick add', async () => {
+  const view = await mount(panel, { host: host() })
+  await view.press({ testId: 'more-toggle' })
+  await view.type({ type: 'Textarea', label: 'รายละเอียด' }, 'hidden')
+  await view.type({ type: 'Input', label: 'วันครบกำหนด' }, '2999-01-01')
+  await view.select({ type: 'Select', label: 'repo' }, 'zed')
+  await view.select({ type: 'Select', label: 'สถานะ' }, 'in-review')
+  await view.press({ testId: 'more-toggle' })
+  await view.type({ type: 'Input', label: 'งานใหม่' }, 'quick', { submit: true })
+  const t = stored(view)[0]
+  assert.deepEqual([t.description, t.dueDate, t.status, t.repo], ['', '', 'todo', 'proj'])
   done(view)
   await view.unmount()
 })
