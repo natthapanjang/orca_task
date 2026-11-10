@@ -23,3 +23,8 @@ test('repoContextFrom lists distinct sorted repos', () => {
   const list = [ws('1', '/r/zeta', null), ws('2', 'C:\\r\\alpha', 'm'), ws('3', '/x/zeta', 'm')]
   assert.deepEqual(repoContextFrom(list, { displayName: 'none', branch: '' }).repos, ['alpha', 'zeta'])
 })
+
+test('repoContextFrom returns empty repo when two repos match the same name and branch', () => {
+  const list = [ws('main', '/r/alpha', 'main'), ws('main', '/r/beta', 'main')]
+  assert.deepEqual(repoContextFrom(list, { displayName: 'main', branch: 'main' }), { repo: '', repos: ['alpha', 'beta'] })
+})

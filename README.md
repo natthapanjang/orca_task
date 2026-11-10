@@ -6,7 +6,7 @@ A right-sidebar panel for jotting tasks by hand: each task has a status (`todo`,
 - `src/worker.ts` answers the `repoContext` request (`src/protocol.ts`) using the host method `workspace.list`, which needs the `workspace:read` capability.
 - `orca plugin test .` runs the tests in Node with `orca/testing`; `orca plugin check .` renders the panel in each `src/panel.check.ts` scenario.
 
-Known limit: "worktree นี้" matches tasks on worktree name and branch only, so two repos with a worktree of the same name and branch show each other's tasks.
+Known limit: "worktree นี้" matches tasks on worktree name and branch only, so two repos with a worktree of the same name and branch show each other's tasks, and the default repo is left empty for you to pick.
 
 ## Develop
 
