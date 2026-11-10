@@ -2,6 +2,7 @@
 // this file when it loads: no build step. A save restarts it and drops its in-memory state, so
 // the total lives in orca.storage (the storage:own capability).
 import type { OrcaWorkerApi } from 'orca/worker'
+import { repoContextFrom } from './repos'
 
 const TOTAL = 'total'
 
@@ -19,5 +20,15 @@ export default function activate(orca: OrcaWorkerApi): void {
     // Every open panel hears it, so a second panel stays in step.
     orca.panels.post('counter.changed', { total })
     return { total }
+  })
+
+  // Never throws: a failed or truncated workspace.list still answers with what it has.
+  orca.panels.handle('repoContext', async (ctx) => {
+    try {
+      const { workspaces } = await orca.host.call('workspace.list')
+      return repoContextFrom(workspaces, ctx)
+    } catch {
+      return { repo: '', repos: [] }
+    }
   })
 }
