@@ -39,7 +39,7 @@ test('adding a task with the Add button appends a todo row with the repo from re
   assert.deepEqual(t.worktree, wt)
   assert.deepEqual(h.callsOf('plugin.request')[0], { name: 'repoContext', input: wt })
   assert.equal(view.find({ type: 'EmptyState' }), null)
-  assert.ok(view.find({ text: 'write docs' }))
+  assert.ok(view.find({ type: 'Checkbox', label: 'write docs' }))
   assert.equal(view.valueOf({ type: 'Input', label: 'งานใหม่' }), '')
   done(view)
   await view.unmount()
@@ -57,13 +57,13 @@ test('Enter in the input adds the task, blank text is ignored', async () => {
 
 test('tab "worktree นี้" shows only the focused worktree; "ทั้งหมด" shows all', async () => {
   const view = await mount(panel, { host: host([task('1', 'mine', 'todo'), task('2', 'theirs', 'todo', other)]) })
-  assert.ok(view.find({ text: 'mine' }))
-  assert.ok(view.find({ text: 'theirs' }))
+  assert.ok(view.find({ type: 'Checkbox', label: 'mine' }))
+  assert.ok(view.find({ type: 'Checkbox', label: 'theirs' }))
   await view.select({ type: 'Tabs' }, 'worktree')
-  assert.ok(view.find({ text: 'mine' }))
-  assert.equal(view.find({ text: 'theirs' }), null)
+  assert.ok(view.find({ type: 'Checkbox', label: 'mine' }))
+  assert.equal(view.find({ type: 'Checkbox', label: 'theirs' }), null)
   await view.select({ type: 'Tabs' }, 'all')
-  assert.ok(view.find({ text: 'theirs' }))
+  assert.ok(view.find({ type: 'Checkbox', label: 'theirs' }))
   done(view)
   await view.unmount()
 })
@@ -94,7 +94,7 @@ test('delete button removes one task', async () => {
 test('markup text renders literally', async () => {
   const view = await mount(panel, { host: host() })
   await view.type({ type: 'Input', label: 'งานใหม่' }, '<b>x</b>', { submit: true })
-  assert.ok(view.find({ text: '<b>x</b>' }))
+  assert.ok(view.find({ type: 'Checkbox', label: '<b>x</b>' }))
   done(view)
   await view.unmount()
 })
@@ -137,6 +137,7 @@ test('with no known repo the repo is typed in an Input', async () => {
 
 test("changing a row's repo updates that task and leaves the new-task default alone", async () => {
   const view = await mount(panel, { host: host([task('1', 'a', 'todo'), task('2', 'b', 'todo')]) })
+  await view.press({ testId: 'edit-2' })
   await view.select({ testId: 'repo-2' }, 'zed')
   assert.deepEqual(stored(view).map((t) => t.repo), ['proj', 'zed'])
   await view.type({ type: 'Input', label: 'งานใหม่' }, 'c', { submit: true })
@@ -148,6 +149,7 @@ test("changing a row's repo updates that task and leaves the new-task default al
 test("with no known repo a row's repo is typed in an Input", async () => {
   const h = mockHost({ storage: { tasks: [task('1', 'a', 'todo', wt, '')] }, results: { 'workspace.readContext': null }, requests: { repoContext: { repo: '', repos: [] } } })
   const view = await mount(panel, { host: h })
+  await view.press({ testId: 'edit-1' })
   await view.type({ testId: 'repo-1' }, 'mine', { submit: true })
   assert.equal(stored(view)[0].repo, 'mine')
   done(view)
@@ -195,6 +197,50 @@ test('an older repoContext answer arriving late does not overwrite the newer one
   await view.settled()
   await view.type({ type: 'Input', label: 'งานใหม่' }, 'x', { submit: true })
   assert.equal(stored(view)[0].repo, 'thirdrepo')
+  done(view)
+  await view.unmount()
+})
+
+test('Add with blank text shows the error, writes nothing, and typing clears it', async () => {
+  const view = await mount(panel, { host: host() })
+  await view.press({ text: 'เพิ่ม' })
+  assert.equal(stored(view), undefined)
+  const shown = () => JSON.stringify(view.tree()).includes('พิมพ์ข้อความงานก่อน')
+  assert.equal(shown(), true)
+  await view.type({ type: 'Input', label: 'งานใหม่' }, 'x')
+  assert.equal(shown(), false)
+  done(view)
+  await view.unmount()
+})
+
+test('the status picked in the add form is stored on the new task', async () => {
+  const view = await mount(panel, { host: host() })
+  await view.select({ type: 'Select', label: 'สถานะ' }, 'in-progress')
+  await view.type({ type: 'Input', label: 'งานใหม่' }, 'x', { submit: true })
+  assert.equal(stored(view)[0].status, 'in-progress')
+  done(view)
+  await view.unmount()
+})
+
+test('the checkbox sets completed, and unticking sets todo', async () => {
+  const open = await mount(panel, { host: host([task('1', 'a', 'in-progress')]) })
+  await open.toggle({ testId: 'done-1' })
+  assert.equal(stored(open)[0].status, 'completed')
+  done(open)
+  await open.unmount()
+  const finished = await mount(panel, { host: host([task('1', 'a', 'completed')]) })
+  await finished.toggle({ testId: 'done-1' })
+  assert.equal(stored(finished)[0].status, 'todo')
+  done(finished)
+  await finished.unmount()
+})
+
+test('the footer counts unfinished tasks of the visible tab and clearing only touches that tab', async () => {
+  const view = await mount(panel, { host: host([task('1', 'a', 'todo'), task('2', 'b', 'completed'), task('3', 'c', 'completed', other)]) })
+  assert.ok(view.find({ text: 'เหลือ 1 งาน' }))
+  await view.select({ type: 'Tabs' }, 'worktree')
+  await view.press({ text: 'ล้างที่เสร็จแล้ว' })
+  assert.deepEqual(stored(view).map((t) => t.id), ['1', '3'])
   done(view)
   await view.unmount()
 })

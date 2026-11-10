@@ -1,8 +1,11 @@
 // No build step: Orca strips the types and compiles the JSX when the panel loads.
 import {
   atom,
+  Badge,
   Button,
+  Checkbox,
   EmptyState,
+  Field,
   host,
   IconButton,
   Input,
@@ -44,6 +47,11 @@ const draft = atom('')
 /** The repo picked or typed for the next task; null means the focused worktree's repo. */
 const draftRepo = atom<string | null>(null)
 const tab = atom('all')
+const draftStatus = atom<Status>('todo')
+/** True after Add with blank text; cleared by typing. */
+const blankError = atom(false)
+/** The task whose repo is being changed (its Badge is a Select meanwhile). */
+const editing = atom<string | null>(null)
 
 const NONE: Worktree = { displayName: '', branch: '' }
 const pick = (c: Worktree | null): Worktree | null => (c ? { displayName: c.displayName, branch: c.branch } : null)
@@ -72,12 +80,16 @@ export function setup(ctx: PanelContext): void {
 const edit = (f: (list: Task[]) => Task[]) => update(tasks, (stored) => f(parseTasks(stored)))
 
 function submit(text: string): void {
-  if (!text.trim()) return
+  if (!text.trim()) return void set(blankError, true)
   const wt = read(focused) ?? NONE
   const repo = read(draftRepo) ?? read(repoInfo).repo
-  edit((list) => addTask(list, { text, repo, worktree: wt }, Date.now(), () => `${Date.now()}-${Math.random().toString(36).slice(2)}`))
+  const status = read(draftStatus)
+  edit((list) => addTask(list, { text, repo, worktree: wt, status }, Date.now(), () => `${Date.now()}-${Math.random().toString(36).slice(2)}`))
   set(draft, '')
+  set(blankError, false)
 }
+
+const statusOptions = STATUSES.map((s) => ({ value: s, label: s }))
 
 // Select takes no free text, so with no known repo a typed Input stands in.
 // select = Orca knows repos: typing a repo adds it to the options, which must not swap the Input for a Select mid-typing.
@@ -91,25 +103,41 @@ function repoField(id: string | undefined, value: string, options: string[], onC
   )
 }
 
-function Rows({ list, options, select }: { list: Task[]; options: string[]; select: boolean }) {
-  if (list.length === 0) return <EmptyState title="ยังไม่มีงาน" description="พิมพ์งานด้านบนแล้วกด Enter" icon="check" />
+function Rows({ list, options, select, empty }: { list: Task[]; options: string[]; select: boolean; empty: string }) {
+  if (list.length === 0) return <EmptyState title="ยังไม่มีงาน" description={empty} icon="check" />
   return (
     <List label="งาน">
       {list.map((t) => (
         <ListItem key={t.id}>
-          <Text>{t.text}</Text>
-          <Row gap="sm" align="center" justify="between">
-            {repoField(`repo-${t.id}`, t.repo, options, (v) => edit((l) => setRepo(l, t.id, v)), select)}
-            <Select
-              key={`status-${t.id}`}
-              label="สถานะ"
-              labelHidden
-              value={t.status}
-              options={STATUSES.map((s) => ({ value: s, label: s }))}
-              onChange={(v) => edit((l) => setStatus(l, t.id, v as Status))}
+          <Stack gap="xs">
+            <Checkbox
+              key={`done-${t.id}`}
+              label={t.text}
+              checked={t.status === 'completed'}
+              onChange={(on) => edit((l) => setStatus(l, t.id, on ? 'completed' : 'todo'))}
             />
-            <IconButton key={`delete-${t.id}`} icon="delete" label="ลบ" onPress={() => edit((l) => removeTask(l, t.id))} />
-          </Row>
+            <Row gap="xs" align="center" justify="between" wrap>
+              {read(editing) === t.id ? (
+                repoField(`repo-${t.id}`, t.repo, options, (v) => (edit((l) => setRepo(l, t.id, v)), set(editing, null)), select)
+              ) : (
+                <Row gap="xs" align="center">
+                  <Badge tone={t.repo ? 'neutral' : 'warning'}>{t.repo || 'ไม่ระบุ repo'}</Badge>
+                  <IconButton key={`edit-${t.id}`} icon="edit" label={`เปลี่ยน repo: ${t.text}`} variant="ghost" size="xs" onPress={() => set(editing, t.id)} />
+                </Row>
+              )}
+              <Row gap="xs" align="center">
+                <Select
+                  key={`status-${t.id}`}
+                  label="สถานะ"
+                  labelHidden
+                  value={t.status}
+                  options={statusOptions}
+                  onChange={(v) => edit((l) => setStatus(l, t.id, v as Status))}
+                />
+                <IconButton key={`delete-${t.id}`} icon="delete" label={`ลบ: ${t.text}`} tone="danger" variant="ghost" onPress={() => edit((l) => removeTask(l, t.id))} />
+              </Row>
+            </Row>
+          </Stack>
         </ListItem>
       ))}
     </List>
@@ -122,26 +150,55 @@ export default function Panel() {
   const { repo, repos } = read(repoInfo)
   const options = repoOptions(list, repos)
   const chosen = read(draftRepo) ?? repo
+  const select = repos.length > 0
+  const mine = forWorktree(list, wt ?? NONE)
+  const visible = read(tab) === 'worktree' ? mine : list
+  const remaining = visible.filter((t) => t.status !== 'completed').length
+  const finished = visible.length - remaining
+  const clearVisible = () => {
+    const ids = new Set(visible.filter((t) => t.status === 'completed').map((t) => t.id))
+    edit((l) => l.filter((t) => !ids.has(t.id)))
+  }
   return (
     <Stack gap="md">
       <Stack gap="xs">
-        <Input label="งานใหม่" labelHidden placeholder="งานใหม่" value={read(draft)} onChange={(v) => set(draft, v)} onSubmit={submit} />
-        <Row gap="xs" align="center">
-          {repoField(undefined, chosen, options, (v) => set(draftRepo, v), repos.length > 0)}
-          <Button onPress={() => submit(read(draft))}>เพิ่ม</Button>
-        </Row>
+        <Field label="งานใหม่" required error={read(blankError) ? 'พิมพ์ข้อความงานก่อน' : undefined}>
+          <Input
+            label="งานใหม่"
+            labelHidden
+            placeholder="พิมพ์งาน แล้วกด Enter"
+            value={read(draft)}
+            invalid={read(blankError)}
+            onChange={(v) => (set(draft, v), set(blankError, false))}
+            onSubmit={submit}
+          />
+        </Field>
+        <Field label="repo" description={select ? undefined : 'ไม่รู้ repo ของ worktree นี้ — พิมพ์เอง'}>
+          {repoField(undefined, chosen, options, (v) => set(draftRepo, v), select)}
+        </Field>
+        <Field label="สถานะ">
+          <Select label="สถานะ" labelHidden value={read(draftStatus)} options={statusOptions} onChange={(v) => set(draftStatus, v as Status)} />
+        </Field>
+        <Button icon="add" onPress={() => submit(read(draft))}>
+          เพิ่ม
+        </Button>
       </Stack>
       <Tabs label="มุมมอง" value={read(tab)} onChange={(v) => set(tab, v)}>
         <Tab value="all" label="ทั้งหมด">
-          <Rows list={list} options={options} select={repos.length > 0} />
+          <Rows list={list} options={options} select={select} empty="พิมพ์งานด้านบนแล้วกด Enter" />
         </Tab>
         <Tab value="worktree" label="worktree นี้">
-          <Rows list={forWorktree(list, wt ?? NONE)} options={options} select={repos.length > 0} />
+          <Rows list={mine} options={options} select={select} empty="worktree นี้ยังไม่มีงาน — สลับไป “ทั้งหมด” ดูของ worktree อื่น" />
         </Tab>
       </Tabs>
-      <Button variant="ghost" onPress={() => edit(clearCompleted)}>
-        ล้างที่เสร็จแล้ว
-      </Button>
+      <Row gap="sm" align="center" justify="between" wrap>
+        <Text muted size="xs">
+          เหลือ {remaining} งาน
+        </Text>
+        <Button variant="ghost" disabled={finished === 0} onPress={clearVisible}>
+          ล้างที่เสร็จแล้ว
+        </Button>
+      </Row>
     </Stack>
   )
 }
