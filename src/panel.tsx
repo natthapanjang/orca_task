@@ -34,13 +34,13 @@ import {
   parseTasks,
   removeTask,
   repoOptions,
-  setRepo,
   setStatus,
   sortTasks,
   STATUSES,
   type Status,
   type Task,
   todayLocal,
+  updateTask,
   validDue,
   type Worktree
 } from './tasks'
@@ -65,8 +65,15 @@ const filterStatus = atom<string>('all')
 const filterRepo = atom<string>('all')
 /** True after Add with blank text; cleared by typing. */
 const blankError = atom(false)
-/** The task whose repo is being changed (its Badge is a Select meanwhile). */
+/** The task shown as an edit form (one at a time) and that form's fields. Not persisted: Cancel and reload drop it. */
 const editing = atom<string | null>(null)
+const eTitle = atom('')
+const eDesc = atom('')
+const eDue = atom('')
+const eRepo = atom('')
+const eStatus = atom<Status>('todo')
+const eTitleError = atom(false)
+const eDueError = atom(false)
 
 const NONE: Worktree = { displayName: '', branch: '' }
 const pick = (c: Worktree | null): Worktree | null => (c ? { displayName: c.displayName, branch: c.branch } : null)
@@ -120,8 +127,76 @@ function repoField(id: string | undefined, value: string, options: string[], onC
   return select ? (
     <Select key={id} label="repo" labelHidden placeholder="repo" value={value} options={options.map((r) => ({ value: r, label: r }))} onChange={onChange} />
   ) : (
-    // A row (id set) commits on Enter only: a write per keystroke to the persisted atom lost keystrokes to its async echo.
-    <Input key={id} label="repo" labelHidden placeholder={id ? "repo + Enter" : "repo"} {...(id ? { defaultValue: value, onSubmit: onChange } : { value, onChange })} />
+    <Input key={id} label="repo" labelHidden placeholder="repo" value={value} onChange={onChange} />
+  )
+}
+
+function startEdit(t: Task): void {
+  set(editing, t.id)
+  set(eTitle, t.title)
+  set(eDesc, t.description)
+  set(eDue, t.dueDate)
+  set(eRepo, t.repo)
+  set(eStatus, t.status)
+  set(eTitleError, false)
+  set(eDueError, false)
+}
+
+// Checks the draft first so a bad field keeps the form open with its error beside it; updateTask would refuse the same inputs silently.
+function saveEdit(id: string): void {
+  const title = read(eTitle)
+  const dueDate = read(eDue).trim()
+  const badTitle = !title.trim()
+  const badDue = !validDue(dueDate)
+  set(eTitleError, badTitle)
+  set(eDueError, badDue)
+  if (badTitle || badDue) return
+  edit((l) => updateTask(l, id, { title, description: read(eDesc), dueDate, repo: read(eRepo), status: read(eStatus) }))
+  set(editing, null)
+}
+
+function EditForm({ id, options, select }: { id: string; options: string[]; select: boolean }) {
+  return (
+    <Stack gap="xs">
+      <Field label="ชื่องาน" required error={read(eTitleError) ? 'พิมพ์ข้อความงานก่อน' : undefined}>
+        <Input
+          key={`edit-title-${id}`}
+          label="ชื่องาน"
+          labelHidden
+          value={read(eTitle)}
+          invalid={read(eTitleError)}
+          onChange={(v) => (set(eTitle, v), set(eTitleError, false))}
+          onSubmit={() => saveEdit(id)}
+        />
+      </Field>
+      <Field label="รายละเอียด">
+        <Textarea key={`edit-desc-${id}`} label="รายละเอียด" labelHidden rows={2} value={read(eDesc)} onChange={(v) => set(eDesc, v)} />
+      </Field>
+      <Field label="วันครบกำหนด" error={read(eDueError) ? 'วันที่ต้องเป็น YYYY-MM-DD' : undefined}>
+        <Input
+          key={`edit-due-${id}`}
+          label="วันครบกำหนด"
+          labelHidden
+          placeholder="YYYY-MM-DD"
+          value={read(eDue)}
+          invalid={read(eDueError)}
+          onChange={(v) => (set(eDue, v), set(eDueError, false))}
+          onSubmit={() => saveEdit(id)}
+        />
+      </Field>
+      <Field label="repo">{repoField(`edit-repo-${id}`, read(eRepo), options, (v) => set(eRepo, v), select)}</Field>
+      <Field label="สถานะ">
+        <Select key={`edit-status-${id}`} label="สถานะ" labelHidden value={read(eStatus)} options={statusOptions} onChange={(v) => set(eStatus, v as Status)} />
+      </Field>
+      <Row gap="xs" align="center">
+        <Button key={`save-${id}`} onPress={() => saveEdit(id)}>
+          บันทึก
+        </Button>
+        <Button key={`cancel-${id}`} variant="ghost" onPress={() => set(editing, null)}>
+          ยกเลิก
+        </Button>
+      </Row>
+    </Stack>
   )
 }
 
@@ -136,6 +211,12 @@ function Rows({ list, options, select, empty, filtered }: { list: Task[]; option
     <List label="งาน">
       {list.map((t) => {
         const due = dueBadge(t, todayLocal())
+        if (read(editing) === t.id)
+          return (
+            <ListItem key={t.id}>
+              <EditForm id={t.id} options={options} select={select} />
+            </ListItem>
+          )
         return (
         <ListItem key={t.id}>
           <Stack gap="xs">
@@ -151,15 +232,10 @@ function Rows({ list, options, select, empty, filtered }: { list: Task[]; option
               </Text>
             ) : null}
             <Row gap="xs" align="center" justify="between" wrap>
-              {read(editing) === t.id ? (
-                repoField(`repo-${t.id}`, t.repo, options, (v) => (edit((l) => setRepo(l, t.id, v)), set(editing, null)), select)
-              ) : (
-                <Row gap="xs" align="center">
-                  <Badge tone={t.repo ? 'neutral' : 'warning'}>{t.repo || 'ไม่ระบุ repo'}</Badge>
-                  {due ? <Badge tone={due.tone}>{due.text}</Badge> : null}
-                  <IconButton key={`edit-${t.id}`} icon="edit" label={`เปลี่ยน repo: ${t.title}`} variant="ghost" size="xs" onPress={() => set(editing, t.id)} />
-                </Row>
-              )}
+              <Row gap="xs" align="center">
+                <Badge tone={t.repo ? 'neutral' : 'warning'}>{t.repo || 'ไม่ระบุ repo'}</Badge>
+                {due ? <Badge tone={due.tone}>{due.text}</Badge> : null}
+              </Row>
               <Row gap="xs" align="center">
                 <Select
                   key={`status-${t.id}`}
@@ -169,6 +245,7 @@ function Rows({ list, options, select, empty, filtered }: { list: Task[]; option
                   options={statusOptions}
                   onChange={(v) => edit((l) => setStatus(l, t.id, v as Status))}
                 />
+                <IconButton key={`edit-${t.id}`} icon="edit" label={`แก้ไข: ${t.title}`} variant="ghost" size="xs" onPress={() => startEdit(t)} />
                 <IconButton key={`delete-${t.id}`} icon="delete" label={`ลบ: ${t.title}`} tone="danger" variant="ghost" onPress={() => edit((l) => removeTask(l, t.id))} />
               </Row>
             </Row>

@@ -1,6 +1,13 @@
 # Task notes
 
-A right-sidebar panel for jotting tasks by hand. Each task has `title`, `description`, `dueDate` (`YYYY-MM-DD` or empty), `repo` and `status` (`todo`, `in-progress`, `in-review`, `completed`). The repo defaults to the focused worktree's repo. The list can be filtered by status and by repo, on top of the two tabs.
+A right-sidebar panel for jotting tasks by hand. Each task has `title`, `description`, `dueDate` (`YYYY-MM-DD` or empty), `repo` and `status` (`todo`, `in-progress`, `in-review`, `completed`). The repo defaults to the focused worktree's repo.
+
+## Using the panel
+
+- **Quick add:** type a title and press Enter or `เพิ่ม`. `รายละเอียดเพิ่มเติม` opens description, due date, repo and status.
+- **Filter:** by status, and by repo (including `ไม่ระบุ repo` for tasks with none), on top of the two tabs.
+- **Rows:** show repo, a due badge (`เลยกำหนด N วัน`, `ครบวันนี้`, `ครบอีก N วัน`, otherwise the date) and a status picker. The pencil edits every field in place (`บันทึก` / `ยกเลิก`).
+- **Order:** unfinished first, then nearest due date (no date last), then oldest.
 
 ## AI access
 

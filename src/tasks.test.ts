@@ -13,7 +13,6 @@ import {
   parseTasks,
   removeTask,
   repoOptions,
-  setRepo,
   setStatus,
   validDue,
   type Task,
@@ -61,10 +60,9 @@ test('addTask allows duplicate text with distinct ids', () => {
   assert.equal(one.length, 1)
 })
 
-test('setStatus, setRepo, removeTask change only the matching id', () => {
+test('setStatus, removeTask change only the matching id', () => {
   const tasks = [mk('a'), mk('b')]
   assert.deepEqual(setStatus(tasks, 'a', 'completed').map((t) => t.status), ['completed', 'todo'])
-  assert.deepEqual(setRepo(tasks, 'b', 'z').map((t) => t.repo), ['r', 'z'])
   assert.deepEqual(removeTask(tasks, 'a').map((t) => t.id), ['b'])
   assert.deepEqual(tasks.map((t) => t.status), ['todo', 'todo'])
 })

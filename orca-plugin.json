@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "task-notes",
   "name": "Task notes",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Jot tasks with title, description, due date, repo and status; filter them; stored in a plain JSON file an AI agent can read.",
   "engines": {
     "orca": ">=1.4.246"
