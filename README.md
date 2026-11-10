@@ -4,7 +4,7 @@ A right-sidebar panel for jotting tasks by hand. Each task has `title`, `descrip
 
 ## AI access
 
-Tasks are one `tasks` array in the plugin's own `storage.json` (`%APPDATA%\Orca\plugins-data\<plugin-id>\storage.json`; find the folder with `dir "$env:APPDATA\Orca\plugins-data"`). An AI session reads that file; to see only one repo's open tasks:
+Tasks are one `tasks` array in the plugin's own `storage.json` (`%APPDATA%\Orca\plugins-data\<publisher>.task-notes\storage.json`, e.g. `local.task-notes` when installed from a folder; find the folder with `dir "$env:APPDATA\Orca\plugins-data"`). An AI session reads that file; to see only one repo's open tasks:
 
 ```sh
 node -e "const f=process.argv[1],r=process.argv[2];const t=JSON.parse(require('fs').readFileSync(f,'utf8')).tasks||[];console.log(JSON.stringify(t.filter(x=>x.repo===r&&x.status!=='completed'),null,1))" "<path to storage.json>" "<repo name>"
