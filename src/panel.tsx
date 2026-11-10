@@ -115,6 +115,9 @@ function submit(text: string): void {
   set(draft, '')
   set(draftDesc, '')
   set(draftDue, '')
+  // The next task starts from the defaults again: the focused worktree's repo, status todo.
+  set(draftRepo, null)
+  set(draftStatus, 'todo')
   set(blankError, false)
   set(dueError, false)
 }
@@ -273,6 +276,7 @@ export default function Panel() {
   const filter = { status: (fs === 'all' ? '' : fs) as Status | '', repo: fr === 'all' ? '' : fr }
   const visible = filterTasks(read(tab) === 'worktree' ? mine : list, filter)
   const shown = (l: Task[]) => sortTasks(filterTasks(l, filter))
+  const activeFilters = [fs === 'all' ? '' : fs, fr === 'all' ? '' : fr === NO_REPO ? 'ไม่ระบุ repo' : fr].filter(Boolean).join(', ')
   const remaining = visible.filter((t) => t.status !== 'completed').length
   const finished = visible.length - remaining
   const clearVisible = () => {
@@ -344,9 +348,16 @@ export default function Panel() {
         </Tab>
       </Tabs>
       <Row gap="sm" align="center" justify="between" wrap>
-        <Text muted size="xs">
-          เหลือ {remaining} งาน
-        </Text>
+        <Stack gap="xs">
+          <Text muted size="xs">
+            เหลือ {remaining} งาน
+          </Text>
+          {activeFilters ? (
+            <Text muted size="xs">
+              {`กรอง: ${activeFilters}`}
+            </Text>
+          ) : null}
+        </Stack>
         <Button variant="ghost" disabled={finished === 0} onPress={clearVisible}>
           ล้างที่เสร็จแล้ว
         </Button>
