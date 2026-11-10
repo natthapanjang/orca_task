@@ -10,7 +10,7 @@ Tasks are one `tasks` array in the plugin's own `storage.json` (`%APPDATA%\Orca\
 node -e "const f=process.argv[1],r=process.argv[2];const t=JSON.parse(require('fs').readFileSync(f,'utf8')).tasks||[];console.log(JSON.stringify(t.filter(x=>x.repo===r&&x.status!=='completed'),null,1))" "<path to storage.json>" "<repo name>"
 ```
 
-Tell the agent the file path and the repo name (for example in the repo's `CLAUDE.md`). Old items saved with `text` instead of `title` are read as titles. The file layout (`{ "tasks": [...] }`) is taken from the plugin test host, not yet checked on a real install.
+Tell the agent the file path and the repo name (for example in the repo's `CLAUDE.md`). Old items saved with `text` instead of `title` are read as titles. The `{ "tasks": [...] }` layout matches other plugins' real `storage.json` files, but this plugin's own file was not seen on disk: check it exists after `orca plugin install <dir> --approve`.
 
 - `src/panel.tsx`: the panel. `src/tasks.ts`: pure task logic. `src/repos.ts`: repo name from a workspace path.
 - `src/worker.ts` answers the `repoContext` request (`src/protocol.ts`) using the host method `workspace.list`, which needs the `workspace:read` capability.

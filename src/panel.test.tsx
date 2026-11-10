@@ -298,3 +298,43 @@ test('status and repo filters narrow the list together with the tab', async () =
   done(view)
   await view.unmount()
 })
+
+test('a repo filter whose repo vanished falls back to all instead of hiding everything', async () => {
+  const view = await mount(panel, { host: host([task('1', 'a', 'todo', wt, 'proj'), task('2', 'b', 'todo', wt, 'gone')]) })
+  await view.select({ testId: 'filter-repo' }, 'gone')
+  await view.press({ testId: 'delete-2' })
+  assert.ok(view.find({ type: 'Checkbox', label: 'a' }))
+  done(view)
+  await view.unmount()
+})
+
+test('with a filter active, an empty list says no task matches, not that there are none', async () => {
+  const view = await mount(panel, { host: host([task('1', 'a', 'todo')]) })
+  await view.select({ testId: 'filter-status' }, 'in-review')
+  const tree = JSON.stringify(view.tree())
+  assert.equal(tree.includes('ไม่มีงานตรงตัวกรอง'), true)
+  assert.equal(tree.includes('ยังไม่มีงาน'), false)
+  done(view)
+  await view.unmount()
+})
+
+test('clearing completed under a filter removes only the visible completed tasks', async () => {
+  const list = [task('1', 'a', 'completed', wt, 'proj'), task('2', 'b', 'completed', wt, 'zed'), task('3', 'c', 'todo', wt, 'zed')]
+  const view = await mount(panel, { host: host(list) })
+  await view.select({ testId: 'filter-repo' }, 'zed')
+  assert.ok(view.find({ text: 'เหลือ 1 งาน' }))
+  await view.press({ text: 'ล้างที่เสร็จแล้ว' })
+  assert.deepEqual(stored(view).map((t) => t.id), ['1', '3'])
+  done(view)
+  await view.unmount()
+})
+
+test('markup in a description renders literally', async () => {
+  const view = await mount(panel, { host: host() })
+  await view.type({ type: 'Input', label: 'งานใหม่' }, 'x')
+  await view.type({ type: 'Textarea', label: 'รายละเอียด' }, '<script>y</script>')
+  await view.press({ text: 'เพิ่ม' })
+  assert.ok(view.find({ text: '<script>y</script>' }))
+  done(view)
+  await view.unmount()
+})

@@ -124,8 +124,13 @@ function repoField(id: string | undefined, value: string, options: string[], onC
   )
 }
 
-function Rows({ list, options, select, empty }: { list: Task[]; options: string[]; select: boolean; empty: string }) {
-  if (list.length === 0) return <EmptyState title="ยังไม่มีงาน" description={empty} icon="check" />
+function Rows({ list, options, select, empty, filtered }: { list: Task[]; options: string[]; select: boolean; empty: string; filtered: boolean }) {
+  if (list.length === 0)
+    return filtered ? (
+      <EmptyState title="ไม่มีงานตรงตัวกรอง" description="เปลี่ยนตัวกรองด้านบนเป็น “ทั้งหมด”" icon="check" />
+    ) : (
+      <EmptyState title="ยังไม่มีงาน" description={empty} icon="check" />
+    )
   return (
     <List label="งาน">
       {list.map((t) => (
@@ -182,7 +187,8 @@ export default function Panel() {
   const select = repos.length > 0
   const mine = forWorktree(list, wt ?? NONE)
   const fs = read(filterStatus)
-  const fr = read(filterRepo)
+  // A repo that no longer appears anywhere (deleted or re-assigned) must not leave the list silently empty.
+  const fr = options.includes(read(filterRepo)) ? read(filterRepo) : 'all'
   const filter = { status: (fs === 'all' ? '' : fs) as Status | '', repo: fr === 'all' ? '' : fr }
   const visible = filterTasks(read(tab) === 'worktree' ? mine : list, filter)
   const shown = (l: Task[]) => filterTasks(l, filter)
@@ -243,10 +249,10 @@ export default function Panel() {
       </Row>
       <Tabs label="มุมมอง" value={read(tab)} onChange={(v) => set(tab, v)}>
         <Tab value="all" label="ทั้งหมด">
-          <Rows list={shown(list)} options={options} select={select} empty="พิมพ์งานด้านบนแล้วกด Enter" />
+          <Rows list={shown(list)} options={options} select={select} filtered={fs !== 'all' || fr !== 'all'} empty="พิมพ์งานด้านบนแล้วกด Enter" />
         </Tab>
         <Tab value="worktree" label="worktree นี้">
-          <Rows list={shown(mine)} options={options} select={select} empty="worktree นี้ยังไม่มีงาน — สลับไป “ทั้งหมด” ดูของ worktree อื่น" />
+          <Rows list={shown(mine)} options={options} select={select} filtered={fs !== 'all' || fr !== 'all'} empty="worktree นี้ยังไม่มีงาน — สลับไป “ทั้งหมด” ดูของ worktree อื่น" />
         </Tab>
       </Tabs>
       <Row gap="sm" align="center" justify="between" wrap>
