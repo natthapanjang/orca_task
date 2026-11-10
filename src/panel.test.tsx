@@ -1,5 +1,6 @@
 import { assert, mockHost, mount, test } from 'orca/testing'
 import * as panel from './panel'
+import { NO_REPO, todayLocal } from './tasks'
 
 const wt = { displayName: 'wt', branch: 'main' }
 const other = { displayName: 'other', branch: 'dev' }
@@ -128,6 +129,7 @@ test('workspace.changed asks repoContext again; no focused workspace gives repo 
 test('with no known repo the repo is typed in an Input', async () => {
   const h = mockHost({ results: { 'workspace.readContext': null }, requests: { repoContext: { repo: '', repos: [] } } })
   const view = await mount(panel, { host: h })
+  await view.press({ testId: 'more-toggle' })
   await view.type({ type: 'Input', label: 'repo' }, 'mine')
   await view.type({ type: 'Input', label: 'งานใหม่' }, 'x', { submit: true })
   assert.equal(stored(view)[0].repo, 'mine')
@@ -162,6 +164,7 @@ const answers = (input: { displayName: string }) =>
 test("a picked repo is dropped when the focused worktree changes: new tasks get the new worktree's repo", async () => {
   const h = mockHost({ results: { 'workspace.readContext': { ...wt, terminals: [] } }, requests: { repoContext: answers } })
   const view = await mount(panel, { host: h })
+  await view.press({ testId: 'more-toggle' })
   await view.select({ type: 'Select', label: 'repo' }, 'zed')
   await view.emit('workspace.changed', { context: { ...other, terminals: [] } })
   await view.type({ type: 'Input', label: 'งานใหม่' }, 'x', { submit: true })
@@ -173,6 +176,7 @@ test("a picked repo is dropped when the focused worktree changes: new tasks get 
 
 test('workspace.changed for the same worktree (terminals only) keeps the picked repo', async () => {
   const view = await mount(panel, { host: host() })
+  await view.press({ testId: 'more-toggle' })
   await view.select({ type: 'Select', label: 'repo' }, 'zed')
   await view.emit('workspace.changed', { context: { ...wt, terminals: [{ id: 't1', title: 'sh' }] } })
   await view.type({ type: 'Input', label: 'งานใหม่' }, 'x', { submit: true })
@@ -215,6 +219,7 @@ test('Add with blank text shows the error, writes nothing, and typing clears it'
 
 test('the status picked in the add form is stored on the new task', async () => {
   const view = await mount(panel, { host: host() })
+  await view.press({ testId: 'more-toggle' })
   await view.select({ type: 'Select', label: 'สถานะ' }, 'in-progress')
   await view.type({ type: 'Input', label: 'งานใหม่' }, 'x', { submit: true })
   assert.equal(stored(view)[0].status, 'in-progress')
@@ -247,6 +252,7 @@ test('the footer counts unfinished tasks of the visible tab and clearing only to
 
 test('description and a valid due date are stored and shown on the row', async () => {
   const view = await mount(panel, { host: host() })
+  await view.press({ testId: 'more-toggle' })
   await view.type({ type: 'Input', label: 'งานใหม่' }, 'ship it')
   await view.type({ type: 'Textarea', label: 'รายละเอียด' }, 'before the demo')
   await view.type({ type: 'Input', label: 'วันครบกำหนด' }, '2999-12-31')
@@ -262,6 +268,7 @@ test('description and a valid due date are stored and shown on the row', async (
 
 test('an invalid due date blocks Add, shows an error, and typing clears it', async () => {
   const view = await mount(panel, { host: host() })
+  await view.press({ testId: 'more-toggle' })
   await view.type({ type: 'Input', label: 'งานใหม่' }, 'x')
   await view.type({ type: 'Input', label: 'วันครบกำหนด' }, '2026-02-30')
   await view.press({ text: 'เพิ่ม' })
@@ -331,10 +338,81 @@ test('clearing completed under a filter removes only the visible completed tasks
 
 test('markup in a description renders literally', async () => {
   const view = await mount(panel, { host: host() })
+  await view.press({ testId: 'more-toggle' })
   await view.type({ type: 'Input', label: 'งานใหม่' }, 'x')
   await view.type({ type: 'Textarea', label: 'รายละเอียด' }, '<script>y</script>')
   await view.press({ text: 'เพิ่ม' })
   assert.ok(view.find({ text: '<script>y</script>' }))
+  done(view)
+  await view.unmount()
+})
+
+test('the extra fields stay hidden until รายละเอียดเพิ่มเติม is pressed', async () => {
+  const view = await mount(panel, { host: host() })
+  assert.equal(view.find({ type: 'Textarea', label: 'รายละเอียด' }), null)
+  assert.equal(view.find({ type: 'Input', label: 'วันครบกำหนด' }), null)
+  await view.press({ testId: 'more-toggle' })
+  assert.ok(view.find({ type: 'Textarea', label: 'รายละเอียด' }))
+  assert.ok(view.find({ type: 'Input', label: 'วันครบกำหนด' }))
+  done(view)
+  await view.unmount()
+})
+
+test('quick add with only a title stores empty description and due, status todo, default repo', async () => {
+  const view = await mount(panel, { host: host() })
+  await view.type({ type: 'Input', label: 'งานใหม่' }, 'quick', { submit: true })
+  const [t] = stored(view)
+  assert.deepEqual([t.description, t.dueDate, t.status, t.repo], ['', '', 'todo', 'proj'])
+  done(view)
+  await view.unmount()
+})
+
+test('an invalid due date on Add opens the closed extra fields and shows the error beside them', async () => {
+  const view = await mount(panel, { host: host() })
+  await view.press({ testId: 'more-toggle' })
+  await view.type({ type: 'Input', label: 'วันครบกำหนด' }, '2026-02-30')
+  await view.press({ testId: 'more-toggle' })
+  assert.equal(view.find({ type: 'Input', label: 'วันครบกำหนด' }), null)
+  await view.type({ type: 'Input', label: 'งานใหม่' }, 'x', { submit: true })
+  assert.equal(stored(view), undefined)
+  assert.ok(view.find({ type: 'Input', label: 'วันครบกำหนด' }))
+  assert.equal(JSON.stringify(view.tree()).includes('วันที่ต้องเป็น YYYY-MM-DD'), true)
+  done(view)
+  await view.unmount()
+})
+
+test('due badges say overdue, today, or the plain date once completed', async () => {
+  const due = (id: string, status: string, dueDate: string) => ({ ...task(id, id, status), dueDate })
+  const view = await mount(panel, { host: host([due('late', 'todo', '2000-01-01'), due('now', 'todo', todayLocal()), due('fin', 'completed', '2000-01-02')]) })
+  const tree = JSON.stringify(view.tree())
+  assert.equal(tree.includes('เลยกำหนด'), true)
+  assert.equal(tree.includes('ครบวันนี้'), true)
+  assert.equal(tree.includes('2000-01-02'), true)
+  // The completed task past its date must not add an overdue badge: one overdue per one due-today.
+  assert.equal(tree.split('เลยกำหนด').length, tree.split('ครบวันนี้').length)
+  done(view)
+  await view.unmount()
+})
+
+test('the no-repo filter keeps only tasks without a repo and survives re-rendering', async () => {
+  const list = [task('1', 'a', 'todo', wt, 'proj'), task('2', 'b', 'todo', wt, '')]
+  const view = await mount(panel, { host: host(list) })
+  await view.select({ testId: 'filter-repo' }, NO_REPO)
+  const has = (l: string) => view.find({ type: 'Checkbox', label: l }) !== null
+  assert.deepEqual(['a', 'b'].filter(has), ['b'])
+  await view.select({ testId: 'filter-status' }, 'todo')
+  assert.deepEqual(['a', 'b'].filter(has), ['b'])
+  assert.equal(JSON.stringify(view.tree()).includes('ไม่ระบุ repo'), true)
+  done(view)
+  await view.unmount()
+})
+
+test('rows are ordered by due date, unfinished first', async () => {
+  const due = (id: string, dueDate: string, status = 'todo') => ({ ...task(id, id, status), dueDate })
+  const view = await mount(panel, { host: host([due('later', '2999-02-01'), due('fin', '2999-01-01', 'completed'), due('earlier', '2999-01-15')]) })
+  const tree = JSON.stringify(view.tree())
+  const at = (l: string) => tree.indexOf(`"${l}"`)
+  assert.equal(at('earlier') < at('later') && at('later') < at('fin'), true)
   done(view)
   await view.unmount()
 })

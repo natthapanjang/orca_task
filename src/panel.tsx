@@ -27,16 +27,20 @@ import {
 } from 'orca'
 import {
   addTask,
+  dueBadge,
   filterTasks,
   forWorktree,
+  NO_REPO,
   parseTasks,
   removeTask,
   repoOptions,
   setRepo,
   setStatus,
+  sortTasks,
   STATUSES,
   type Status,
   type Task,
+  todayLocal,
   validDue,
   type Worktree
 } from './tasks'
@@ -52,6 +56,8 @@ const tab = atom('all')
 const draftStatus = atom<Status>('todo')
 const draftDesc = atom('')
 const draftDue = atom('')
+/** Whether the add form's extra fields (description, due, repo, status) are shown. */
+const more = atom(false)
 /** True after Add with a due date that is not a real YYYY-MM-DD; cleared by typing. */
 const dueError = atom(false)
 /** List filters; 'all' means no filter. */
@@ -94,7 +100,7 @@ function submit(text: string): void {
   const repo = read(draftRepo) ?? read(repoInfo).repo
   const status = read(draftStatus)
   const dueDate = read(draftDue).trim()
-  if (!validDue(dueDate)) return void set(dueError, true)
+  if (!validDue(dueDate)) return void (set(dueError, true), set(more, true))
   const description = read(draftDesc)
   edit((list) => addTask(list, { title: text, description, dueDate, repo, worktree: wt, status }, Date.now(), () => `${Date.now()}-${Math.random().toString(36).slice(2)}`))
   set(draft, '')
@@ -106,11 +112,6 @@ function submit(text: string): void {
 
 const statusOptions = STATUSES.map((s) => ({ value: s, label: s }))
 const filterStatusOptions = [{ value: 'all', label: 'ทั้งหมด' }, ...statusOptions]
-// Local calendar day as YYYY-MM-DD; string order equals date order.
-const today = () => {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 // Select takes no free text, so with no known repo a typed Input stands in.
 // select = Orca knows repos: typing a repo adds it to the options, which must not swap the Input for a Select mid-typing.
@@ -133,7 +134,9 @@ function Rows({ list, options, select, empty, filtered }: { list: Task[]; option
     )
   return (
     <List label="งาน">
-      {list.map((t) => (
+      {list.map((t) => {
+        const due = dueBadge(t, todayLocal())
+        return (
         <ListItem key={t.id}>
           <Stack gap="xs">
             <Checkbox
@@ -147,15 +150,13 @@ function Rows({ list, options, select, empty, filtered }: { list: Task[]; option
                 {t.description}
               </Text>
             ) : null}
-            {t.dueDate ? (
-              <Badge tone={t.status !== 'completed' && t.dueDate < today() ? 'warning' : 'neutral'}>{t.dueDate}</Badge>
-            ) : null}
             <Row gap="xs" align="center" justify="between" wrap>
               {read(editing) === t.id ? (
                 repoField(`repo-${t.id}`, t.repo, options, (v) => (edit((l) => setRepo(l, t.id, v)), set(editing, null)), select)
               ) : (
                 <Row gap="xs" align="center">
                   <Badge tone={t.repo ? 'neutral' : 'warning'}>{t.repo || 'ไม่ระบุ repo'}</Badge>
+                  {due ? <Badge tone={due.tone}>{due.text}</Badge> : null}
                   <IconButton key={`edit-${t.id}`} icon="edit" label={`เปลี่ยน repo: ${t.title}`} variant="ghost" size="xs" onPress={() => set(editing, t.id)} />
                 </Row>
               )}
@@ -173,7 +174,8 @@ function Rows({ list, options, select, empty, filtered }: { list: Task[]; option
             </Row>
           </Stack>
         </ListItem>
-      ))}
+        )
+      })}
     </List>
   )
 }
@@ -188,10 +190,10 @@ export default function Panel() {
   const mine = forWorktree(list, wt ?? NONE)
   const fs = read(filterStatus)
   // A repo that no longer appears anywhere (deleted or re-assigned) must not leave the list silently empty.
-  const fr = options.includes(read(filterRepo)) ? read(filterRepo) : 'all'
+  const fr = read(filterRepo) === NO_REPO || options.includes(read(filterRepo)) ? read(filterRepo) : 'all'
   const filter = { status: (fs === 'all' ? '' : fs) as Status | '', repo: fr === 'all' ? '' : fr }
   const visible = filterTasks(read(tab) === 'worktree' ? mine : list, filter)
-  const shown = (l: Task[]) => filterTasks(l, filter)
+  const shown = (l: Task[]) => sortTasks(filterTasks(l, filter))
   const remaining = visible.filter((t) => t.status !== 'completed').length
   const finished = visible.length - remaining
   const clearVisible = () => {
@@ -212,26 +214,33 @@ export default function Panel() {
             onSubmit={submit}
           />
         </Field>
-        <Field label="รายละเอียด">
-          <Textarea label="รายละเอียด" labelHidden rows={2} value={read(draftDesc)} onChange={(v) => set(draftDesc, v)} />
-        </Field>
-        <Field label="วันครบกำหนด" error={read(dueError) ? 'วันที่ต้องเป็น YYYY-MM-DD' : undefined}>
-          <Input
-            label="วันครบกำหนด"
-            labelHidden
-            placeholder="YYYY-MM-DD"
-            value={read(draftDue)}
-            invalid={read(dueError)}
-            onChange={(v) => (set(draftDue, v), set(dueError, false))}
-            onSubmit={() => submit(read(draft))}
-          />
-        </Field>
-        <Field label="repo" description={select ? undefined : 'ไม่รู้ repo ของ worktree นี้ — พิมพ์เอง'}>
-          {repoField(undefined, chosen, options, (v) => set(draftRepo, v), select)}
-        </Field>
-        <Field label="สถานะ">
-          <Select label="สถานะ" labelHidden value={read(draftStatus)} options={statusOptions} onChange={(v) => set(draftStatus, v as Status)} />
-        </Field>
+        <Button key="more-toggle" variant="ghost" icon={read(more) ? 'collapse' : 'expand'} onPress={() => set(more, !read(more))}>
+          รายละเอียดเพิ่มเติม
+        </Button>
+        {read(more) ? (
+          <Stack gap="xs">
+          <Field label="รายละเอียด">
+            <Textarea label="รายละเอียด" labelHidden rows={2} value={read(draftDesc)} onChange={(v) => set(draftDesc, v)} />
+          </Field>
+          <Field label="วันครบกำหนด" error={read(dueError) ? 'วันที่ต้องเป็น YYYY-MM-DD' : undefined}>
+            <Input
+              label="วันครบกำหนด"
+              labelHidden
+              placeholder="YYYY-MM-DD"
+              value={read(draftDue)}
+              invalid={read(dueError)}
+              onChange={(v) => (set(draftDue, v), set(dueError, false))}
+              onSubmit={() => submit(read(draft))}
+            />
+          </Field>
+          <Field label="repo" description={select ? undefined : 'ไม่รู้ repo ของ worktree นี้ — พิมพ์เอง'}>
+            {repoField(undefined, chosen, options, (v) => set(draftRepo, v), select)}
+          </Field>
+          <Field label="สถานะ">
+            <Select label="สถานะ" labelHidden value={read(draftStatus)} options={statusOptions} onChange={(v) => set(draftStatus, v as Status)} />
+          </Field>
+          </Stack>
+        ) : null}
         <Button icon="add" onPress={() => submit(read(draft))}>
           เพิ่ม
         </Button>
@@ -243,7 +252,7 @@ export default function Panel() {
           label="กรองตามที่เก็บ"
           labelHidden
           value={fr}
-          options={[{ value: 'all', label: 'ทุก repo' }, ...options.map((r) => ({ value: r, label: r }))]}
+          options={[{ value: 'all', label: 'ทุก repo' }, { value: NO_REPO, label: 'ไม่ระบุ repo' }, ...options.map((r) => ({ value: r, label: r }))]}
           onChange={(v) => set(filterRepo, v)}
         />
       </Row>
