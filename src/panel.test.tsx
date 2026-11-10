@@ -530,3 +530,12 @@ test('the footer names the active filters and says nothing when there are none',
   done(view)
   await view.unmount()
 })
+
+test('the filters sit above the add form', async () => {
+  const view = await mount(panel, { host: host() })
+  const tree = JSON.stringify(view.tree())
+  assert.equal(tree.indexOf('filter-status') < tree.indexOf('"งานใหม่"'), true)
+  assert.equal(tree.indexOf('filter-repo') < tree.indexOf('"งานใหม่"'), true)
+  done(view)
+  await view.unmount()
+})

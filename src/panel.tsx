@@ -285,6 +285,17 @@ export default function Panel() {
   }
   return (
     <Stack gap="md">
+      <Row gap="xs" align="center" wrap>
+        <Select key="filter-status" label="กรองสถานะ" labelHidden value={fs} options={filterStatusOptions} onChange={(v) => set(filterStatus, v)} />
+        <Select
+          key="filter-repo"
+          label="กรองตามที่เก็บ"
+          labelHidden
+          value={fr}
+          options={[{ value: 'all', label: 'ทุก repo' }, { value: NO_REPO, label: 'ไม่ระบุ repo' }, ...options.map((r) => ({ value: r, label: r }))]}
+          onChange={(v) => set(filterRepo, v)}
+        />
+      </Row>
       <Stack gap="xs">
         <Field label="งานใหม่" required error={read(blankError) ? 'พิมพ์ข้อความงานก่อน' : undefined}>
           <Input
@@ -328,17 +339,6 @@ export default function Panel() {
           เพิ่ม
         </Button>
       </Stack>
-      <Row gap="xs" align="center" wrap>
-        <Select key="filter-status" label="กรองสถานะ" labelHidden value={fs} options={filterStatusOptions} onChange={(v) => set(filterStatus, v)} />
-        <Select
-          key="filter-repo"
-          label="กรองตามที่เก็บ"
-          labelHidden
-          value={fr}
-          options={[{ value: 'all', label: 'ทุก repo' }, { value: NO_REPO, label: 'ไม่ระบุ repo' }, ...options.map((r) => ({ value: r, label: r }))]}
-          onChange={(v) => set(filterRepo, v)}
-        />
-      </Row>
       <Tabs label="มุมมอง" value={read(tab)} onChange={(v) => set(tab, v)}>
         <Tab value="all" label="ทั้งหมด">
           <Rows list={shown(list)} options={options} select={select} filtered={fs !== 'all' || fr !== 'all'} empty="พิมพ์งานด้านบนแล้วกด Enter" />
