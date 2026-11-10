@@ -3,6 +3,12 @@ import {
   addTask,
   filterTasks,
   clearCompleted,
+  dueBadge,
+  daysUntil,
+  NO_REPO,
+  sortTasks,
+  todayLocal,
+  updateTask,
   forWorktree,
   parseTasks,
   removeTask,
@@ -144,4 +150,56 @@ test('filterTasks combines status and repo; empty means any', () => {
   assert.deepEqual(ids({ status: 'todo', repo: '' }), ['a', 'c', 'd'])
   assert.deepEqual(ids({ status: '', repo: 'x' }), ['a', 'b'])
   assert.deepEqual(ids({ status: 'todo', repo: 'x' }), ['a'])
+})
+
+test('daysUntil counts whole days across month end, year end and a leap day', () => {
+  assert.equal(daysUntil('2026-03-01', '2026-02-28'), 1)
+  assert.equal(daysUntil('2028-03-01', '2028-02-28'), 2)
+  assert.equal(daysUntil('2027-01-01', '2026-12-31'), 1)
+  assert.equal(daysUntil('2026-05-01', '2026-05-02'), -1)
+})
+
+test('todayLocal is the local date as YYYY-MM-DD', () => {
+  assert.equal(todayLocal(new Date(2026, 0, 5)), '2026-01-05')
+})
+
+test('dueBadge shows urgency as text, plain date when later or completed, null without a date', () => {
+  const b = (dueDate: string, status: Task['status'] = 'todo') => dueBadge({ dueDate, status }, '2026-06-10')
+  assert.deepEqual(b('2026-06-07'), { text: 'เลยกำหนด 3 วัน', tone: 'danger' })
+  assert.deepEqual(b('2026-06-10'), { text: 'ครบวันนี้', tone: 'warning' })
+  assert.deepEqual(b('2026-06-11'), { text: 'ครบอีก 1 วัน', tone: 'neutral' })
+  assert.deepEqual(b('2026-06-12'), { text: 'ครบอีก 2 วัน', tone: 'neutral' })
+  assert.deepEqual(b('2026-06-13'), { text: '2026-06-13', tone: 'neutral' })
+  assert.deepEqual(b('2026-06-07', 'completed'), { text: '2026-06-07', tone: 'neutral' })
+  assert.equal(b(''), null)
+})
+
+test('sortTasks: unfinished first, due ascending with no-due last, then at; stable; input untouched', () => {
+  const t = (id: string, dueDate: string, status: Task['status'] = 'todo', at = 1): Task => ({ ...mk(id, status), dueDate, at })
+  const input = [t('done-early', '2026-01-01', 'completed'), t('none', ''), t('due-late', '2026-09-01'), t('due-early', '2026-02-01')]
+  const copy = [...input]
+  assert.deepEqual(sortTasks(input).map((x) => x.id), ['due-early', 'due-late', 'none', 'done-early'])
+  assert.deepEqual(input, copy)
+  assert.deepEqual(sortTasks([t('a', '', 'todo', 5), t('b', '', 'todo', 2)]).map((x) => x.id), ['b', 'a'])
+  assert.deepEqual(sortTasks([t('x', '2026-02-01'), t('y', '2026-02-01')]).map((x) => x.id), ['x', 'y'])
+})
+
+test('filterTasks with NO_REPO keeps only tasks without a repo and combines with status', () => {
+  const tasks = [mk('a', 'todo', worktree, ''), mk('b', 'completed', worktree, ''), mk('c', 'todo', worktree, 'x')]
+  assert.deepEqual(filterTasks(tasks, { status: '', repo: NO_REPO }).map((t) => t.id), ['a', 'b'])
+  assert.deepEqual(filterTasks(tasks, { status: 'todo', repo: NO_REPO }).map((t) => t.id), ['a'])
+})
+
+test('updateTask changes only the matching id and trims the title', () => {
+  const tasks = [mk('a'), mk('b')]
+  const out = updateTask(tasks, 'a', { title: '  new  ', description: 'd', dueDate: '2026-02-01', repo: 'z', status: 'in-review' })
+  assert.deepEqual(out[0], { ...tasks[0], title: 'new', description: 'd', dueDate: '2026-02-01', repo: 'z', status: 'in-review' })
+  assert.equal(out[1], tasks[1])
+})
+
+test('updateTask rejects a blank title or an impossible date by returning the same array; empty date clears', () => {
+  const tasks = [{ ...mk('a'), dueDate: '2026-02-01' }]
+  assert.equal(updateTask(tasks, 'a', { title: '   ' }), tasks)
+  assert.equal(updateTask(tasks, 'a', { dueDate: '2026-02-30' }), tasks)
+  assert.equal(updateTask(tasks, 'a', { dueDate: '' })[0].dueDate, '')
 })
